@@ -13,8 +13,12 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o main main.go
 # Step 2: Create a minimal runtime image
 FROM alpine:latest
 
-WORKDIR /app
+# Copy the Go binary
 COPY --from=builder /app/main .
+
+# Copy compliance files for multi-mode deployment validation
+COPY pyproject.toml uv.lock ./
+COPY server/app.py ./server/app.py
 
 # Expose the API port
 EXPOSE 8080
