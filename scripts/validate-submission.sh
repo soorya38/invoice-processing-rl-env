@@ -52,3 +52,8 @@ else
     kill $SERVER_PID
     exit 1
 fi
+
+# Cleanup
+echo "Cleaning up..."
+kill $SERVER_PID 2>/dev/null || true
+echo -e "${GREEN}Validation complete. All systems compliant and ready!${NC}"
