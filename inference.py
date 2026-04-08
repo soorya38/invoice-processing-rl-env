@@ -67,15 +67,26 @@ def state() -> Optional[dict]:
 
 def run_llm_agent(task_id: str = "easy"):
     """An LLM-driven agent that interacts with the invoice processing environment."""
-    if not HF_TOKEN or not API_BASE_URL:
+    dummy_mode = os.getenv("DUMMY_MODE", "0") == "1"
+
+    if not dummy_mode and (not HF_TOKEN or not API_BASE_URL):
         logger.error("Mandatory environment variables (HF_TOKEN, API_BASE_URL) not set.")
         return
 
-    print(f"Starting Task: {task_id}")
-    client = OpenAI(api_key=HF_TOKEN, base_url=API_BASE_URL)
+    # [START] Mandatory logging requirement - Must be on stdout
+    print(f"[START] Task: {task_id}")
+    sys.stdout.flush()
+
+    if not dummy_mode:
+        client = OpenAI(api_key=HF_TOKEN, base_url=API_BASE_URL)
+        logger.info(f"Starting LLM agent for task: {task_id} using model: {MODEL_NAME}")
+    else:
+        logger.info(f"Starting DUMMY agent for task: {task_id}")
 
     obs = reset(task_id)
     if not obs:
+        print(f"[END] Task: {task_id}, Score: 0.0")
+        sys.stdout.flush()
         return
 
     tools = [
@@ -103,35 +114,70 @@ def run_llm_agent(task_id: str = "easy"):
     ]
 
     while True:
-        system_prompt = "Process invoice text."
-        user_prompt = f"Raw Invoice Text:\n{obs.raw_text}"
-
-        try:
-            response = client.chat.completions.create(
-                model=MODEL_NAME,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ],
-                tools=tools,
-                tool_choice="required",
-                temperature=0
+        if not dummy_mode:
+            system_prompt = (
+                "You are an expert invoice processing agent. Your goal is to extract key fields from the provided raw text. "
+                "Use the 'extract_field' tool to submit your extractions one by one. "
+                f"Required fields remaining: {', '.join(obs.remaining_fields)}"
             )
+            
+            user_prompt = f"Raw Invoice Text:\n{obs.raw_text}\n\nFields already extracted: {obs.extracted_fields}"
 
-            tool_call = response.choices[0].message.tool_calls[0]
-            arguments = json.loads(tool_call.function.arguments)
-            field_name = arguments["field_name"]
-            value = arguments["value"]
+            try:
+                response = client.chat.completions.create(
+                    model=MODEL_NAME,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt}
+                    ],
+                    tools=tools,
+                    tool_choice="required",
+                    temperature=0 # Maintain reproducibility
+                )
 
-            result = step(field_name, value)
-            if not result:
+                tool_call = response.choices[0].message.tool_calls[0]
+                arguments = json.loads(tool_call.function.arguments)
+                field_name = arguments["field_name"]
+                value = arguments["value"]
+            except Exception as e:
+                logger.error(f"Error during LLM interaction: {e}")
                 break
-            obs = result.observation
-            if result.done:
+        else:
+            # Dummy mode: just pick the first remaining field and a placeholder value
+            if not obs.remaining_fields:
                 break
-        except Exception as e:
-            logger.error(f"Error: {e}")
+            field_name = obs.remaining_fields[0]
+            value = "DUMMY_VALUE" 
+            logger.info(f"Dummy Action: Extracting {field_name} -> {value}")
+
+        logger.info(f"Action: {field_name} -> {value}")
+        
+        result = step(field_name, value)
+        if not result:
             break
+            
+        obs = result.observation
+        reward = result.reward
+        done = result.done
+
+        # [STEP] Mandatory logging requirement - Must be on stdout
+        print(f"[STEP] Action: extract_field({field_name}, {value}), Reward: {reward:.2f}")
+        sys.stdout.flush()
+        
+        if done:
+            break
+
+    final_state = state()
+    final_score = 0.0
+    if final_state:
+        final_score = final_state.get('FinalScore', 0.0)
+        steps = final_state.get('StepCount', 0)
+        max_steps = final_state.get('MaxSteps', 0)
+        logger.info(f"Task {task_id} result: Steps={steps}/{max_steps}, Final Score={final_score:.2f}")
+    
+    # [END] Mandatory logging requirement - Must be on stdout
+    print(f"[END] Task: {task_id}, Score: {final_score:.2f}")
+    sys.stdout.flush()
 
 if __name__ == "__main__":
     for level in ["easy", "medium", "hard"]:
