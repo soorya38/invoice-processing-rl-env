@@ -34,3 +34,33 @@ class StepResult(BaseModel):
     reward: float
     done: bool
     info: str
+
+def reset(task_id: str = "easy") -> Optional[Observation]:
+    """Resets the environment with the specified task."""
+    try:
+        response = requests.post(f"{ENV_URL}/reset", json={"task_id": task_id})
+        response.raise_for_status()
+        return Observation(**response.json())
+    except Exception as e:
+        logger.error(f"Failed to reset environment: {e}")
+        return None
+
+def step(field_name: str, value: str) -> Optional[StepResult]:
+    """Performs a step in the environment by extracting a field."""
+    try:
+        response = requests.post(f"{ENV_URL}/step", json={"field_name": field_name, "value": value})
+        response.raise_for_status()
+        return StepResult(**response.json())
+    except Exception as e:
+        logger.error(f"Failed to perform step: {e}")
+        return None
+
+def state() -> Optional[dict]:
+    """Returns the current environment state."""
+    try:
+        response = requests.get(f"{ENV_URL}/state")
+        response.raise_for_status()
+        return response.json()
+    except Exception as e:
+        logger.error(f"Failed to get state: {e}")
+        return None
