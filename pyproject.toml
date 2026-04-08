@@ -1,0 +1,16 @@
+[project]
+name = "invoice-processing-rl-env"
+version = "0.1.0"
+description = "Invoice Processing Reinforcement Learning Environment"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "requests",
+    "pydantic",
+    "openai",
+    "python-dotenv"
+]
+
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
