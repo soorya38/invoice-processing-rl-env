@@ -16,8 +16,7 @@ HF_TOKEN = os.getenv("HF_TOKEN")
 API_BASE_URL = os.getenv("API_BASE_URL") or "https://router.huggingface.co/v1"
 MODEL_NAME = os.getenv("MODEL_NAME") or "Qwen/Qwen2.5-72B-Instruct"
 BENCHMARK = os.getenv("MY_ENV_V4_BENCHMARK", "invoice_processing")
-
-ENV_URL = "http://localhost:8080"
+ENV_URL = os.getenv("ENV_URL", "http://localhost:8080")
 SUCCESS_SCORE_THRESHOLD = 0.9
 
 # Environment Models (Pydantic)
