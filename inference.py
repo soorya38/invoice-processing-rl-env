@@ -4,21 +4,21 @@ import logging
 import requests
 import sys
 from typing import List, Optional
-
-# Configure logging
-logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
-logger = logging.getLogger(__name__)
-
-# Environment variable configuration
-# Mandatory structured logging tags: [START], [STEP], [END]
-HF_TOKEN = os.getenv("HF_TOKEN")
-API_BASE_URL = os.getenv("API_BASE_URL")
-MODEL_NAME = os.getenv("MODEL_NAME", "gpt-4o")
-
-ENV_URL = "http://localhost:8080"
-
 from pydantic import BaseModel, Field
 from openai import OpenAI
+
+# Configure logging to stderr to keep stdout clean for mandatory tags
+logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s', stream=sys.stderr)
+logger = logging.getLogger(__name__)
+
+# Environment variable configuration (Aligned with Sample Script)
+HF_TOKEN = os.getenv("HF_TOKEN")
+API_BASE_URL = os.getenv("API_BASE_URL") or "https://router.huggingface.co/v1"
+MODEL_NAME = os.getenv("MODEL_NAME") or "Qwen/Qwen2.5-72B-Instruct"
+BENCHMARK = os.getenv("MY_ENV_V4_BENCHMARK", "invoice_processing")
+
+ENV_URL = "http://localhost:8080"
+SUCCESS_SCORE_THRESHOLD = 0.9
 
 # Environment Models (Pydantic)
 class InvoiceField(BaseModel):
@@ -36,7 +36,7 @@ class StepResult(BaseModel):
     done: bool
     info: str
 
-def reset(task_id: str = "easy") -> Optional[Observation]:
+def reset(task_id: str) -> Optional[Observation]:
     """Resets the environment with the specified task."""
     try:
         response = requests.post(f"{ENV_URL}/reset", json={"task_id": task_id})
@@ -66,30 +66,46 @@ def state() -> Optional[dict]:
         logger.error(f"Failed to get state: {e}")
         return None
 
-def run_llm_agent(task_id: str = "easy"):
+def log_start(task: str, env: str, model: str) -> None:
+    print(f"[START] task={task} env={env} model={model}", flush=True)
+
+def log_step(step_n: int, action: str, reward: float, done: bool, error: Optional[str]) -> None:
+    error_val = error if error else "null"
+    done_val = str(done).lower()
+    print(
+        f"[STEP] step={step_n} action={action} reward={reward:.2f} done={done_val} error={error_val}",
+        flush=True,
+    )
+
+def log_end(success: bool, steps: int, score: float, rewards: List[float]) -> None:
+    rewards_str = ",".join(f"{r:.2f}" for r in rewards)
+    print(f"[END] success={str(success).lower()} steps={steps} score={score:.2f} rewards={rewards_str}", flush=True)
+
+def run_agent(task_id: str):
     """An LLM-driven agent that interacts with the invoice processing environment."""
     dummy_mode = os.getenv("DUMMY_MODE", "0") == "1"
 
-    if not dummy_mode and (not HF_TOKEN or not API_BASE_URL):
-        logger.error("Mandatory environment variables (HF_TOKEN, API_BASE_URL) not set.")
+    if not dummy_mode and not HF_TOKEN:
+        logger.error("Mandatory environment variable HF_TOKEN not set.")
         return
 
-    # [START] Mandatory logging requirement - Must be on stdout
-    print(f"[START] Task: {task_id}")
-    sys.stdout.flush()
+    log_start(task=task_id, env=BENCHMARK, model=MODEL_NAME)
 
     if not dummy_mode:
         client = OpenAI(api_key=HF_TOKEN, base_url=API_BASE_URL)
-        logger.info(f"Starting LLM agent for task: {task_id} using model: {MODEL_NAME}")
+        logger.info(f"Starting LLM agent for task: {task_id}")
     else:
         logger.info(f"Starting DUMMY agent for task: {task_id}")
 
     obs = reset(task_id)
     if not obs:
-        print(f"[END] Task: {task_id}, Score: 0.0")
-        sys.stdout.flush()
+        log_end(success=False, steps=0, score=0.0, rewards=[])
         return
 
+    rewards_list = []
+    steps_taken = 0
+    done = False
+    
     tools = [
         {
             "type": "function",
@@ -114,14 +130,16 @@ def run_llm_agent(task_id: str = "easy"):
         }
     ]
 
-    while True:
+    while not done:
+        steps_taken += 1
+        action_desc = ""
+        
         if not dummy_mode:
             system_prompt = (
                 "You are an expert invoice processing agent. Your goal is to extract key fields from the provided raw text. "
                 "Use the 'extract_field' tool to submit your extractions one by one. "
                 f"Required fields remaining: {', '.join(obs.remaining_fields)}"
             )
-            
             user_prompt = f"Raw Invoice Text:\n{obs.raw_text}\n\nFields already extracted: {obs.extracted_fields}"
 
             try:
@@ -133,26 +151,26 @@ def run_llm_agent(task_id: str = "easy"):
                     ],
                     tools=tools,
                     tool_choice="required",
-                    temperature=0 # Maintain reproducibility
+                    temperature=0
                 )
 
                 tool_call = response.choices[0].message.tool_calls[0]
                 arguments = json.loads(tool_call.function.arguments)
                 field_name = arguments["field_name"]
                 value = arguments["value"]
+                action_desc = f"extract_field('{field_name}')"
             except Exception as e:
                 logger.error(f"Error during LLM interaction: {e}")
+                log_step(step_n=steps_taken, action="error", reward=0.0, done=True, error=str(e))
+                # Break to summary
                 break
         else:
-            # Dummy mode: just pick the first remaining field and a placeholder value
             if not obs.remaining_fields:
                 break
             field_name = obs.remaining_fields[0]
             value = "DUMMY_VALUE" 
-            logger.info(f"Dummy Action: Extracting {field_name} -> {value}")
+            action_desc = f"extract_field('{field_name}')"
 
-        logger.info(f"Action: {field_name} -> {value}")
-        
         result = step(field_name, value)
         if not result:
             break
@@ -160,27 +178,18 @@ def run_llm_agent(task_id: str = "easy"):
         obs = result.observation
         reward = result.reward
         done = result.done
-
-        # [STEP] Mandatory logging requirement - Must be on stdout
-        print(f"[STEP] Action: extract_field({field_name}, {value}), Reward: {reward:.2f}")
-        sys.stdout.flush()
+        rewards_list.append(reward)
         
-        if done:
-            break
+        log_step(step_n=steps_taken, action=action_desc, reward=reward, done=done, error=None)
 
     final_state = state()
     final_score = 0.0
     if final_state:
         final_score = final_state.get('FinalScore', 0.0)
-        steps = final_state.get('StepCount', 0)
-        max_steps = final_state.get('MaxSteps', 0)
-        logger.info(f"Task {task_id} result: Steps={steps}/{max_steps}, Final Score={final_score:.2f}")
     
-    # [END] Mandatory logging requirement - Must be on stdout
-    print(f"[END] Task: {task_id}, Score: {final_score:.2f}")
-    sys.stdout.flush()
+    success = final_score >= SUCCESS_SCORE_THRESHOLD
+    log_end(success=success, steps=steps_taken, score=final_score, rewards=rewards_list)
 
 if __name__ == "__main__":
-    for level in ["easy", "medium", "hard"]:
-        run_llm_agent(level)
-# Agent compliance verified.
+    for difficulty in ["easy", "medium", "hard"]:
+        run_agent(difficulty)

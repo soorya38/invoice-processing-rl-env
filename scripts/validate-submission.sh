@@ -45,10 +45,11 @@ echo "Testing Go server compilation..."
 echo -e "${GREEN}[✔️] Go build successful${NC}"
 
 # Check for [START], [STEP], [END] tags
-if grep -q "\[START\]" /tmp/inference.log && grep -q "\[STEP\]" /tmp/inference.log && grep -q "\[END\]" /tmp/inference.log; then
-    echo -e "${GREEN}[✔️] Structured logging tags found in output${NC}"
+if grep -q "\[START\] task=" /tmp/inference.log && grep -q "\[STEP\] step=" /tmp/inference.log && grep -q "\[END\] success=" /tmp/inference.log; then
+    echo -e "${GREEN}[✔️] Correct structured logging tags (key=value) found in output${NC}"
 else
-    echo -e "${RED}[❌] Mandatory structured logging tags missing from output${NC}"
+    echo -e "${RED}[❌] Mandatory structured logging tags missing or incorrect format in output${NC}"
+    cat /tmp/inference.log
     kill $SERVER_PID
     exit 1
 fi
