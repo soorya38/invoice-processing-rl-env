@@ -132,3 +132,7 @@ def run_llm_agent(task_id: str = "easy"):
         except Exception as e:
             logger.error(f"Error: {e}")
             break
+
+if __name__ == "__main__":
+    for level in ["easy", "medium", "hard"]:
+        run_llm_agent(level)
