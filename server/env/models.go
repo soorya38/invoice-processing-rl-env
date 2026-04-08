@@ -38,5 +38,9 @@ type StepResult struct {
 type EnvironmentState struct {
 	CurrentInvoice *Invoice
 	Extracted      []Field
+	StepCount      int
+	MaxSteps       int
+	LastAction     *Action
+	FinalScore     float64
 	Done           bool
 }
