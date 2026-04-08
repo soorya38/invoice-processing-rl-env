@@ -1,3 +1,12 @@
+---
+title: Invoice Processing OpenEnv
+emoji: 📑
+colorFrom: blue
+colorTo: indigo
+sdk: docker
+pinned: false
+---
+
 # Invoice Processing OpenEnv
 
 A production-grade Reinforcement Learning environment for automated invoice data extraction and **mathematical verification**, following the **OpenEnv Specification**.
