@@ -3,15 +3,12 @@ FROM golang:1.24-alpine AS builder
 
 WORKDIR /app
 
-# Copy go.mod first
-COPY server/go.mod ./
+# Copy the entire server contents into the root of the builder
+COPY server/ ./
 
-# Copy the source code (needed for go mod tidy and build)
-COPY server/ ./server/
-
-# Tidy dependencies and build
+# Tidy dependencies and build (within the module root)
 RUN go mod tidy
-RUN CGO_ENABLED=0 GOOS=linux go build -o main ./server/main.go
+RUN CGO_ENABLED=0 GOOS=linux go build -o main main.go
 
 # Step 2: Create a minimal runtime image
 FROM alpine:latest
