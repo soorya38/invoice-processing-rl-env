@@ -3,14 +3,14 @@ FROM golang:1.24-alpine AS builder
 
 WORKDIR /app
 
-# Copy go.mod and handle dependencies
+# Copy go.mod first
 COPY server/go.mod ./
-RUN go mod tidy
 
-# Copy the rest of the server code
+# Copy the source code (needed for go mod tidy and build)
 COPY server/ ./server/
 
-# Build the main server binary
+# Tidy dependencies and build
+RUN go mod tidy
 RUN CGO_ENABLED=0 GOOS=linux go build -o main ./server/main.go
 
 # Step 2: Create a minimal runtime image
