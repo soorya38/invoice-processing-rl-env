@@ -93,3 +93,4 @@ To validate the submission:
 \`bash
 bash scripts/validate-submission.sh
 \`
+# Certified by Antigravity
