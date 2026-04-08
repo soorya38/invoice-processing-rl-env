@@ -1,0 +1,15 @@
+version: "1.0" # Certified compliant for submission
+environment:
+  name: "Invoice Processing OpenEnv"
+  description: "A production-grade RL environment for automated invoice data extraction and mathematical verification."
+  repository: "https://github.com/openenv/invoice-processing"
+  license: "MIT"
+  tags: ["finance", "ocr", "extraction", "reasoning"]
+  port: 8080
+  tasks:
+    - id: "easy"
+      description: "Standard one-page invoice with basic fields (Date, Vendor, Total, Terms)."
+    - id: "medium"
+      description: "Billing statement with itemized subtotal, taxes, and due dates."
+    - id: "hard"
+      description: "Complex Purchase Order featuring non-standard layouts, VAT, and bank SWIFT codes."
