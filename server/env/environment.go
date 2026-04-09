@@ -129,5 +129,8 @@ func (e *Environment) CalculateScore(extracted []Field, groundTruth []Field) flo
 		}
 	}
 
-	return float64(correct) / float64(len(groundTruth))
+	rawScore := float64(correct) / float64(len(groundTruth))
+	// OpenEnv requirement: Every task score must be strictly within (0, 1).
+	// We scale [0.0, 1.0] to [0.01, 0.99] using: (score * 0.98) + 0.01
+	return (rawScore * 0.98) + 0.01
 }
